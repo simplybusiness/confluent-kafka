@@ -1,0 +1,19 @@
+[Unit]
+Description=Apache Zookeeper server (Kafka)
+Documentation=http://zookeeper.apache.org
+Requires=network.target remote-fs.target
+After=network.target remote-fs.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+SyslogIdentifier=zookeeper
+Restart=always
+RestartSec=0s
+ExecStart=/usr/bin/zookeeper-server-start -daemon /etc/kafka/zookeeper.properties
+ExecStop=/usr/bin/zookeeper-server-stop
+
+#  command: /usr/bin/zookeeper-server-start -daemon /etc/kafka/zookeeper.properties
+[Install]
+WantedBy=multi-user.target

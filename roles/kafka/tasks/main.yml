@@ -1,0 +1,156 @@
+#    - name: Generate /etc/hosts file
+#      template:
+#        src=hosts.j2
+#        dest=/etc/hosts
+
+    - include_vars: ../vars/hosts.yml
+
+    - name: Add IP address of all hosts to all hosts
+      lineinfile:
+        dest: /etc/hosts
+        line: "{{ item.value.ip }} {{ item.key }} {{ item.key }}"
+        state: present
+      with_dict: "{{ hosts }}"
+
+    - name: Create Kafka group
+      group: name=kafka state=present
+
+    - name: Create Kafka user
+      user: name=kafka shell=/bin/bash home=/home/kafka group=kafka
+
+    - name: Create /var/lib/kafka directory
+      file: path=/var/lib/kafka state=directory owner=kafka group=kafka mode=0775
+
+    - name: zookeeper folder
+      file: name=/var/lib/zookeeper state=directory
+            mode=0755 owner=root group=root
+
+    - name: Kafka logs ownership check
+      file: path=/var/log/kafka state=directory owner=kafka group=kafka mode=0775
+
+    - name: Get the broker id from the hostname
+      shell: hostname | awk '{print substr($0,length,1)}'
+      register: brokerid
+
+    - name: Get the broker id into a fact
+      set_fact: kafka_broker_id={{ brokerid.stdout_lines[0] }}
+
+    - name: Install Confluent repository key
+      rpm_key:
+        state: present
+        key: http://packages.confluent.io/rpm/3.2/archive.key
+
+    - name: Configure Confluent yum repository
+      blockinfile:
+        create: yes
+        path: /etc/yum.repos.d/confluent.repo
+        block: |
+          [Confluent.dist]
+          name=Confluent repository (dist)
+          baseurl=http://packages.confluent.io/rpm/3.2/7
+          gpgcheck=1
+          gpgkey=http://packages.confluent.io/rpm/3.2/archive.key
+          enabled=1
+          [Confluent]
+          name=Confluent repository
+          baseurl=http://packages.confluent.io/rpm/3.2
+          gpgcheck=1
+          gpgkey=http://packages.confluent.io/rpm/3.2/archive.key
+          enabled=1
+
+    - name: yum-clean-metadata
+      command: yum clean metadata
+      args:
+        warn: no
+
+    - name: Upgrade all packages and update the repos
+      yum:
+        name: '*'
+        state: latest
+
+    - name: Install packages
+      yum: state=present name={{ item }}
+      with_items:
+      - nc
+      - telnet
+#      - java-1.7.0-openjdk-headless
+      - confluent-platform-oss-2.11
+
+    - name: Set soft ulimits
+      pam_limits:
+        domain: "*"
+        limit_type: soft
+        limit_item: nofile
+        value: 64000
+
+    - name: Set hard ulimits
+      pam_limits:
+        domain: "*"
+        limit_type: hard
+        limit_item: nofile
+        value: 64000
+
+    - name: Stop firewalld service
+      systemd:
+        state: stopped
+        name: firewalld
+        enabled: no
+
+    - name: Set SELinux to permissive
+      selinux:
+        policy: targeted
+        state: permissive
+
+    - template:
+        src: zookeeper.properties.j2
+        dest: /etc/kafka/zookeeper.properties
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Create the Zookeeper directory
+      file:
+        path: /var/lib/zookeeper
+        state: directory
+        mode: 0755
+
+    - name: Create Zookeeper myid file
+      shell: echo '{{ kafka_broker_id }}' > /var/lib/zookeeper/myid
+
+    - template:
+        src: server.properties.j2
+        dest: /etc/kafka/server.properties
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Copy zookeeepr systemd service config
+      copy: src=zookeeper.service dest=/lib/systemd/system/zookeeper.service owner=root group=root mode=0644
+
+    - name: Set Zookeeper broker to autostart via systemd
+      systemd:
+        name: zookeeper
+        enabled: yes
+        masked: no
+
+    - name: Start zookeeper
+      systemd:
+        name: zookeeper
+        state: started
+
+    - name: Copy Kafka broker systemd service config
+      copy: src=kafka.service dest=/lib/systemd/system/kafka.service owner=root group=root mode=0644
+
+    - name: Set Kafka broker to autostart via systemd
+      systemd:
+        name: kafka
+        enabled: yes
+        masked: no
+
+    - name: Restart Kafka
+      systemd:
+        name: kafka
+        state: restarted
+#
+#    - name: Wait for Kafka broker startup
+#      wait_for: path=/var/log/messages search_regex="started \(kafka.server.KafkaServer\)" timeout=300
