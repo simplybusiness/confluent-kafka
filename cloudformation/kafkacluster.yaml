@@ -431,9 +431,25 @@ Resources:
             # attach the volume
             echo Attaching $VOLUME_ID  `aws ec2 attach-volume --volume-id $VOLUME_ID --instance-id $SELF_INSTANCE_ID --device /dev/sdh`
           }
+
+          construct_zookeeper_config() {
+          # get the ips
+          # aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafka" Name=tag-value,Values="broker*" --profile dojo |grep "PrivateIpAddress" | grep -oE "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}" | sort -u
+
+          # get list of zookeeper servers for zoo.cfg
+          aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafka" Name=tag-value,Values="broker*" |grep "PrivateDnsName" | awk -F\" '{print $4}' | sed 's/$/:2888:3888/' | sort -u | awk '{printf "server.%s=\t%s\n",NR,$0}' | tr -d '[:blank:]' > ~/zoo.cfg
+
+          # add all zookeeper/kafka servers to /etc/hosts
+
+
+
+          }
+
+
           chown -R ec2-user:ec2-user .
           attach_eni
           attach_ebs
+          construct_zookeeper_config
 
 
       ImageId:
