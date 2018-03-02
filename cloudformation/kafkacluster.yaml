@@ -396,8 +396,10 @@ Resources:
             EC2_AVAIL_ZONE=`curl http://$AWS_METADATA_IP/latest/meta-data/placement/availability-zone`
             echo Running is AZ $EC2_AVAIL_ZONE
 
-            # find a kafka ENI in the AZ we are running in that is not already attached
-            ENI_ID=`aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafka" Name=tag-value,Values="broker*" Name=status,Values="available" Name=availability-zone,Values="$EC2_AVAIL_ZONE" | grep -o 'eni-[a-z0-9]*'`
+            # find a kafka ENI in the AZ we are running in that is not already attached -- we select the first 1
+            # TODO we may need to do something here to avoid race conditions
+            ENI_ID=`aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafkabrokerid" Name=tag-value,Values="*" Name=status,Values="available" Name=availability-zone,Values="$EC2_AVAIL_ZONE" | grep -o 'eni-[a-z0-9]*' | head -1`
+
 
             # attach the ENI
             echo Attaching $ENI_ID  `aws ec2 attach-network-interface --network-interface-id $ENI_ID --instance-id $SELF_INSTANCE_ID --device-index 1`
@@ -425,13 +427,14 @@ Resources:
           }
 
           attach_ebs() {
-            # find a free correctly tagged ebs volume in this AZ and attach it
+            # find correctly tagged ebs volume/s ie for this broker in this AZ and attach
 
             EC2_AVAIL_ZONE=`curl http://$AWS_METADATA_IP/latest/meta-data/placement/availability-zone`
             echo Running is AZ $EC2_AVAIL_ZONE
 
             # find a kafka EBS in the AZ we are running in that is not already attached
-            VOLUME_ID=`aws ec2 describe-volumes --filters Name=tag-key,Values="kafka" Name=tag-value,Values="broker*" Name=status,Values="available" Name=availability-zone,Values="$EC2_AVAIL_ZONE" | grep -o 'vol-[a-z0-9]*'`
+            # currenly assumes 1 EBS volume per instance
+            VOLUME_ID=`aws ec2 describe-volumes --filters Name=tag-key,Values="kafkabrokerid" Name=tag-value,Values="broker$BROKER_ID" Name=status,Values="available" Name=availability-zone,Values="$EC2_AVAIL_ZONE" | grep -o 'vol-[a-z0-9]*'`
 
             # attach the volume
             echo Attaching $VOLUME_ID  `aws ec2 attach-volume --volume-id $VOLUME_ID --instance-id $SELF_INSTANCE_ID --device /dev/sdh`
@@ -462,7 +465,7 @@ Resources:
           #  aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafka" Name=tag-value,Values="broker*" |grep "PrivateDnsName" | awk -F\" '{print $4}' | sed 's/$/:2888:3888/' | sort -u | awk '{printf "server.%s=\t%s\n",NR,$0}' | tr -d '[:blank:]' > /tmp/zoo.cfg
 
           # get enis
-          aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafka" Name=tag-value,Values="broker*" |grep "NetworkInterfaceId" | awk -F\" '{print $4}' > /tmp/enis
+          aws ec2 describe-network-interfaces --filters Name=tag-key,Values="kafkabrokerid" Name=tag-value,Values="broker*" |grep "NetworkInterfaceId" | awk -F\" '{print $4}' > /tmp/enis
 
           # get server id and hostname from enis
 
@@ -555,6 +558,8 @@ Resources:
           check_ebs_has_file_system
           mount_ebs
           zookeeper-server-start -daemon /etc/kafka/zookeeper.properties
+          #wait for zookeeper
+          sleep 20
           kafka-server-start -daemon /etc/kafka/server.properties
 
       ImageId:
@@ -577,9 +582,9 @@ Resources:
           # below in VPCZoneIdentifier for all regions
           !GetAZs eu-west-1
         LaunchConfigurationName: !Ref KafkaLaunchConfiguration
-        DesiredCapacity: 3
-        MinSize: 3
-        MaxSize: 3
+        DesiredCapacity: 6
+        MinSize: 6
+        MaxSize: 6
         Cooldown: 300
 #        HealthCheckType: ELB
 #        HealthCheckGracePeriod: 30

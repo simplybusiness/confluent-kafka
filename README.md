@@ -51,6 +51,29 @@ listen on Broker2
 
 `/usr/bin/kafka-console-consumer --bootstrap-server localhost:9092 --topic test --consumer.config  /vagrant/secrets/host.consumer.ssl.config`
 
+## Building a cluster on AWS
+
+The cloudformation script will create a cluster of the size in the cloudformation script; however for this to happen properly you need to create an ENI for each broker and an EBS for each broker they need tags like this:
+
+For the ENI's
+
+| Key | Value |
+| ------------- | ------------- |
+| Name | kafka-eni |
+| brokerid | [integer 1-9 for broker] |
+| kafka | broker[same integer for broker]|
+
+
+For the EBS's
+
+| Key | Value |
+| ------------- | ------------- |
+| brokerid | [integer 1-9 for broker] |
+| kafka | broker[same integer for broker]|
+
+
+
+
 ## References
 
 
