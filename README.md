@@ -5,7 +5,8 @@ ansible role and tests for confluent-kafka
 * Deploys a Confluent Kafka (Platform) cluster supported by multi-node Zookeeper
 * Happens as a single role for kafka and zookeeper because this is what is supported by the confluent release
 * Enables SSL for authentication and broker traffic encryption
-* Uses systemd for kafka and zookeeper services
+* Uses systemd for kafka and zookeeper services  -- this may need to be changed to old style services depending on 
+if we get to use the latest amazon AMI as latest release offering doesn't support systemd
 
 
 # Prerequisites
@@ -59,17 +60,15 @@ For the ENI's
 
 | Key | Value |
 | ------------- | ------------- |
-| Name | kafka-eni |
-| brokerid | [integer 1-9 for broker] |
-| kafka | broker[same integer for broker]|
+| kafkabrokerid | [integer 1-9 for broker] |
+
 
 
 For the EBS's
 
 | Key | Value |
 | ------------- | ------------- |
-| brokerid | [integer 1-9 for broker] |
-| kafka | broker[same integer for broker]|
+| kafkabrokerid | [integer 1-9 for broker] |
 
 
 

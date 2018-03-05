@@ -13,7 +13,8 @@ Parameters:
     AllowedValues: [t1.micro, t2.nano, t2.micro, t2.small, t2.medium, t2.large, m1.small,
                         m1.medium, m1.large, m1.xlarge, m2.xlarge, m2.2xlarge, m2.4xlarge, m3.medium,
                         m3.large, m3.xlarge, m3.2xlarge, m4.large, m4.xlarge, m4.2xlarge, m4.4xlarge,
-                        m4.10xlarge, c1.medium, c1.xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge,
+                        m4.10xlarge, m5.large, m5.xlarge, m5.2xlarge, m5.4xlarge,
+                        m5.12xlarge, c1.medium, c1.xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge,
                         c3.8xlarge, c4.large, c4.xlarge, c4.2xlarge, c4.4xlarge, c4.8xlarge, g2.2xlarge,
                         g2.8xlarge, r3.large, r3.xlarge, r3.2xlarge, r3.4xlarge, r3.8xlarge, i2.xlarge,
                         i2.2xlarge, i2.4xlarge, i2.8xlarge, d2.xlarge, d2.2xlarge, d2.4xlarge, d2.8xlarge,
@@ -72,6 +73,16 @@ Mappings:
     m4.4xlarge:
       Arch: HVM64
     m4.10xlarge:
+      Arch: HVM64
+    m5.large:
+      Arch: HVM64
+    m5.xlarge:
+      Arch: HVM64
+    m5.2xlarge:
+      Arch: HVM64
+    m5.4xlarge:
+      Arch: HVM64
+    m5.12xlarge:
       Arch: HVM64
     c1.medium:
       Arch: PV64
@@ -338,6 +349,8 @@ Resources:
           - Effect: Allow
             Action:
               - 'ec2:*'
+              - 'route53:*'
+              - 'route53domains:*'
             Resource:
               - '*'
 
@@ -381,7 +394,7 @@ Resources:
             EC2_AVAIL_ZONE=`curl http://$AWS_METADATA_IP/latest/meta-data/placement/availability-zone`
             echo Running is AZ $EC2_AVAIL_ZONE
 
-            # find a kafka ENI in the AZ we are running in that is not already attached -- we select the first 1
+            # find a kafka ENI in the AZ we are running in that is not already attached -- we select the first one
             # we need to wait until an ENI is availble so if we don't get anything back then wait
             attached=255
             while [ "$attached" -gt "0" ]; do
@@ -448,13 +461,19 @@ Resources:
           do
             # get broker number
             B_ID=`aws ec2 describe-network-interfaces --network-interface-ids $var | grep -o 'broker[0-9]' | cut -c 7-`
+            # only using broker id 1-3 for zookeeper
+
             DNS=`aws ec2 describe-network-interfaces --network-interface-ids $var | grep  'PrivateDnsName' | awk -F\" '{print $4}' | sort -u`
             IP=`aws ec2 describe-network-interfaces --network-interface-ids $var | grep  'PrivateIpAddress' | awk -F\" '{print $4}' | sort -u`
             HN=`aws ec2 describe-network-interfaces --network-interface-ids $var | grep  'PrivateDnsName' | awk -F\" '{print $4}' | cut -d"." -f1 |sort -u`
-            echo server.$B_ID=$DNS:2888:3888 >> /tmp/zoo3.cfg
+
+            if [ "$B_ID" -lt "4" ]; then
+              echo server.$B_ID=$DNS:2888:3888 >> /tmp/zoo3.cfg
+              echo $IP:2181 >> /tmp/connectstring
+              ZC=$ZC,$IP:2181
+            fi
+
             echo $IP $HN $DNS >> /tmp/hosts
-            echo $IP:2181 >> /tmp/connectstring
-            ZC=$ZC,$IP:2181
           done < /tmp/enis
           ZC=$(echo $ZC | cut -c 2-)
           ZC=$(echo $ZC | tr -d ' ')
@@ -490,6 +509,11 @@ Resources:
           rm /etc/kafka/server.properties
           cp /tmp/zc2 /etc/kafka/server.properties
 
+
+          # add a tag to the instance so we can see what brokerid it is
+          aws ec2 create-tags --resources $SELF_INSTANCE_ID --tags Key=kafka:broker:id,Value=$BROKER_ID
+
+
           # for use if trying to run on t2.micro
           #sed -i 's/1G/500M/g' /usr/bin/kafka-server-start
 
@@ -517,9 +541,17 @@ Resources:
           construct_zookeeper_config
           check_ebs_has_file_system
           mount_ebs
+
+
+          # TODO examine S3 bucket to decide which services to start
+
+
+          # for the moment just start zookeeper on nodes 1-3
+          #TODO to start the zookeeper service -- that will be created by the kafka role so already in the AMI
           zookeeper-server-start -daemon /etc/kafka/zookeeper.properties
           #wait for zookeeper
           sleep 20
+          #TODO change to start the kafka service -- that will be created by the kafka role so already in the AMI
           kafka-server-start -daemon /etc/kafka/server.properties
 
       ImageId:
@@ -575,6 +607,7 @@ Resources:
         ToPort: '22'
         CidrIp:
           Ref: SSHLocation
+
 #Outputs:
 
 #  AZ:
