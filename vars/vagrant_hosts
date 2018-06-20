@@ -1,0 +1,11 @@
+---
+hosts:
+  broker1:
+    name: broker1
+    ip: 192.168.33.10
+  broker2:
+      name: broker2
+      ip: 192.168.33.11
+  broker3:
+      name: broker3
+      ip: 192.168.33.12

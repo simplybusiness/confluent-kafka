@@ -1,0 +1,10 @@
+---
+- hosts: all
+  become: true
+  # tasks/hosts.yml
+  roles:
+      - role: java
+        when: "ansible_os_family == 'RedHat'"
+#        java_packages:
+#          - java-1.8.0-openjdk
+      - role: kafka
